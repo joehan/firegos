@@ -2,13 +2,13 @@
 
 import { Canvas, ThreeEvent, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid } from "@react-three/drei";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getSocket } from "@/lib/socket";
 import Brick, { BrickType } from "./Brick";
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
 import { auth, storage } from "@/lib/firebase";
 
-import { collection, addDoc, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, orderBy, doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 
@@ -94,11 +94,14 @@ export default function Scene() {
   const [selectedType, setSelectedType] = useState<BrickType>("2x2");
   const [rotation, setRotation] = useState(0);
   const [user, setUser] = useState<User | null>(null);
-  const [showGallery, setShowGallery] = useState(false);
-  const [creations, setCreations] = useState<any[]>([]);
-  const [captureTrigger, setCaptureTrigger] = useState(0);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showOverwriteModal, setShowOverwriteModal] = useState(false);
   const [creationName, setCreationName] = useState("");
+  const [creations, setCreations] = useState<any[]>([]);
+  const [showGallery, setShowGallery] = useState(false);
+  const [captureTrigger, setCaptureTrigger] = useState(0);
+  const [currentCreationId, setCurrentCreationId] = useState<string | null>(null);
+  const saveActionRef = useRef<"create" | "overwrite">("create");
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
@@ -166,11 +169,29 @@ export default function Scene() {
 
   const triggerSave = () => {
     if (!user) return alert("Please login to save");
+    if (currentCreationId) {
+      setShowOverwriteModal(true);
+    } else {
+      setCreationName(""); // Clear name for new save
+      setShowSaveModal(true);
+    }
+  };
+
+  const handleOverwrite = () => {
+    saveActionRef.current = "overwrite";
+    setShowOverwriteModal(false);
+    setCaptureTrigger((t) => t + 1);
+  };
+
+  const handleSaveAsNew = () => {
+    setShowOverwriteModal(false);
+    setCreationName("");
     setShowSaveModal(true);
   };
 
   const confirmSave = () => {
     if (!creationName) return alert("Please enter a name");
+    saveActionRef.current = "create";
     setShowSaveModal(false);
     setCaptureTrigger(t => t + 1);
   };
@@ -181,16 +202,32 @@ export default function Scene() {
       await uploadString(storageRef, dataUrl, 'data_url');
       const screenshotUrl = await getDownloadURL(storageRef);
 
-      await addDoc(collection(db, "creations"), {
+      const creationData = {
         authorId: user!.uid,
         authorName: user!.displayName || "Anonymous",
         name: creationName,
         bricks,
         screenshotUrl,
         createdAt: new Date(),
-      });
-      alert("Saved!");
-      setCreationName("");
+      };
+
+      if (saveActionRef.current === "overwrite" && currentCreationId) {
+        // Keep the original name if we are overwriting and didn't ask for a new one
+        // But wait, if we overwrite, we might want to keep the name or update it?
+        // For now, let's assume we keep the name if it's in state, or we should have loaded it.
+        // If creationName is empty (because we cleared it), we might overwrite with empty name?
+        // We should probably ensure creationName is set when loading.
+        // Let's use the existing name if creationName is empty, but we don't have it easily here unless we stored it.
+        // Actually, let's just use the creationName state. We'll ensure it's set on load.
+        await setDoc(doc(db, "creations", currentCreationId), creationData);
+        alert("Saved (Overwritten)!");
+      } else {
+        const docRef = await addDoc(collection(db, "creations"), creationData);
+        setCurrentCreationId(docRef.id);
+        alert("Saved (New)!");
+      }
+
+      // setCreationName(""); // Don't clear immediately, maybe?
     } catch (e) {
       console.error("Error saving document: ", e);
       alert("Error saving");
@@ -207,6 +244,8 @@ export default function Scene() {
 
   const loadCreation = (creation: any) => {
     setBricks(creation.bricks);
+    setCreationName(creation.name || "");
+    setCurrentCreationId(creation.id);
     setShowGallery(false);
     socket?.emit("clear", "default-room");
     creation.bricks.forEach((b: any) => {
@@ -353,6 +392,37 @@ export default function Scene() {
         </div>
       )}
 
+      {/* Overwrite Modal */}
+      {showOverwriteModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white p-6 rounded shadow-lg w-80">
+            <h2 className="text-xl font-bold mb-4">Save Creation</h2>
+            <p className="mb-4 text-gray-600">Overwrite existing creation or save as new?</p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleOverwrite}
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+              >
+                Overwrite "{creationName}"
+              </button>
+              <button
+                onClick={handleSaveAsNew}
+                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+              >
+                Save as New
+              </button>
+              <button
+                onClick={() => setShowOverwriteModal(false)}
+                className="bg-gray-300 text-black px-4 py-2 rounded hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Modal */}
       {showSaveModal && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white p-6 rounded-lg w-96 text-black shadow-xl">
