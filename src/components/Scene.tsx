@@ -150,7 +150,48 @@ export default function Scene() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  const checkCollision = (pos: [number, number, number], type: BrickType, rot: number) => {
+    const [w1, d1] = getBrickDimensions(type, rot);
+    const h1 = 1; // All bricks have height 1
+
+    // New brick bounds (with small epsilon to allow touching)
+    const epsilon = 0.01;
+    const minX1 = pos[0] - w1 / 2 + epsilon;
+    const maxX1 = pos[0] + w1 / 2 - epsilon;
+    const minY1 = pos[1] + epsilon;
+    const maxY1 = pos[1] + h1 - epsilon;
+    const minZ1 = pos[2] - d1 / 2 + epsilon;
+    const maxZ1 = pos[2] + d1 / 2 - epsilon;
+
+    for (const brick of bricks) {
+      const [w2, d2] = getBrickDimensions(brick.type, brick.rotation);
+      const h2 = 1;
+
+      const minX2 = brick.position[0] - w2 / 2;
+      const maxX2 = brick.position[0] + w2 / 2;
+      const minY2 = brick.position[1];
+      const maxY2 = brick.position[1] + h2;
+      const minZ2 = brick.position[2] - d2 / 2;
+      const maxZ2 = brick.position[2] + d2 / 2;
+
+      // Check for overlap
+      const overlapX = minX1 < maxX2 && maxX1 > minX2;
+      const overlapY = minY1 < maxY2 && maxY1 > minY2;
+      const overlapZ = minZ1 < maxZ2 && maxZ1 > minZ2;
+
+      if (overlapX && overlapY && overlapZ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   const addBrick = (position: [number, number, number]) => {
+    if (checkCollision(position, selectedType, rotation)) {
+      // Optional: Visual feedback or sound could go here
+      return;
+    }
+
     const newBrick: BrickData = {
       id: Math.random().toString(36).substr(2, 9),
       position,
