@@ -7,6 +7,7 @@ import { getSocket } from "@/lib/socket";
 import Brick, { BrickType } from "./Brick";
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
 import { auth, storage } from "@/lib/firebase";
+import { useSearchParams, useRouter } from "next/navigation";
 
 import { collection, addDoc, getDocs, query, orderBy, doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -104,6 +105,21 @@ export default function Scene() {
   const saveActionRef = useRef<"create" | "overwrite">("create");
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [roomId, setRoomId] = useState<string>("default-room");
+
+  useEffect(() => {
+    const room = searchParams.get("room");
+    if (room) {
+      setRoomId(room);
+    } else {
+      const newRoomId = Math.random().toString(36).substr(2, 9);
+      router.replace(`?room=${newRoomId}`);
+      setRoomId(newRoomId);
+    }
+  }, [searchParams, router]);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -117,7 +133,9 @@ export default function Scene() {
 
     socketIo.on("connect", () => {
       console.log("Connected to socket", socketIo.id);
-      socketIo.emit("join-room", "default-room");
+      if (roomId && roomId !== "default-room") {
+        socketIo.emit("join-room", roomId);
+      }
     });
 
     socketIo.on("place-brick", (data: { brick: BrickData }) => {
@@ -138,7 +156,7 @@ export default function Scene() {
       socketIo.off("remove-brick");
       socketIo.off("clear");
     };
-  }, []);
+  }, [roomId]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -200,12 +218,12 @@ export default function Scene() {
       rotation: rotation % (Math.PI * 2),
     };
     setBricks((prev) => [...prev, newBrick]);
-    socket?.emit("place-brick", { roomId: "default-room", brick: newBrick });
+    socket?.emit("place-brick", { roomId, brick: newBrick });
   };
 
   const removeBrick = (brickId: string) => {
     setBricks((prev) => prev.filter((b) => b.id !== brickId));
-    socket?.emit("remove-brick", { roomId: "default-room", brickId });
+    socket?.emit("remove-brick", { roomId, brickId });
   };
 
   const triggerSave = () => {
@@ -288,9 +306,9 @@ export default function Scene() {
     setCreationName(creation.name || "");
     setCurrentCreationId(creation.id);
     setShowGallery(false);
-    socket?.emit("clear", "default-room");
+    socket?.emit("clear", roomId);
     creation.bricks.forEach((b: any) => {
-      socket?.emit("place-brick", { roomId: "default-room", brick: b });
+      socket?.emit("place-brick", { roomId, brick: b });
     });
   };
 
@@ -393,10 +411,19 @@ export default function Scene() {
         </button>
         <div className="w-px h-8 bg-gray-300 mx-2" />
         <button
+          className={`p-2 rounded ${isDeleting ? "bg-red-500 text-white" : "bg-white text-black"}`}
           onClick={() => setIsDeleting(!isDeleting)}
-          className={`px-2 py-1 rounded text-xs font-bold transition-colors flex items-center gap-1 ${isDeleting ? "bg-red-500 text-white" : "bg-black/20 text-white hover:bg-black/40"}`}
         >
-          <span>🗑️</span> {isDeleting ? "Done" : "Erase"}
+          {isDeleting ? "Stop Erasing" : "Eraser"}
+        </button>
+        <button
+          className="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
+          onClick={() => {
+            navigator.clipboard.writeText(window.location.href);
+            alert("Link copied to clipboard!");
+          }}
+        >
+          Share
         </button>
         <div className="w-px h-8 bg-gray-300 mx-2" />
         {user ? (
