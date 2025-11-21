@@ -346,6 +346,13 @@ export default function Scene() {
     return isRotated ? [d, w] : [w, d];
   };
 
+  const handleNew = () => {
+    setBricks([]);
+    setCurrentCreationId(null);
+    setCreationName("");
+    socket?.emit("clear", roomId);
+  };
+
   const onPlaneClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     const point = e.point;
@@ -446,6 +453,7 @@ export default function Scene() {
           <div className="flex items-center gap-2">
             <img src={user.photoURL || ""} alt="User" className="w-8 h-8 rounded-full" />
             <button onClick={() => signOut(auth)} className="text-white text-sm bg-red-500/80 px-2 py-1 rounded hover:bg-red-600">Logout</button>
+            <button onClick={handleNew} className="text-white text-sm bg-blue-500/80 px-3 py-1 rounded hover:bg-blue-600">New</button>
             <button onClick={triggerSave} disabled={isSaving} className="text-white text-sm bg-green-500/80 px-3 py-1 rounded hover:bg-green-600">Save</button>
             <button onClick={loadCreations} className="text-white text-sm bg-yellow-500/80 px-3 py-1 rounded hover:bg-yellow-600">Gallery</button>
           </div>
