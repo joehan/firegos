@@ -104,6 +104,8 @@ export default function Scene() {
   const [currentCreationId, setCurrentCreationId] = useState<string | null>(null);
   const saveActionRef = useRef<"create" | "overwrite">("create");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -126,6 +128,15 @@ export default function Scene() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => {
+        setToastMessage(null);
+      }, 3000); // Hide toast after 3 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
 
   useEffect(() => {
     const socketIo = getSocket();
@@ -227,7 +238,8 @@ export default function Scene() {
   };
 
   const triggerSave = () => {
-    if (!user) return alert("Please login to save");
+    if (isSaving) return;
+    if (!user) return setToastMessage("Please login to save");
     if (currentCreationId) {
       setShowOverwriteModal(true);
     } else {
@@ -249,13 +261,15 @@ export default function Scene() {
   };
 
   const confirmSave = () => {
-    if (!creationName) return alert("Please enter a name");
+    if (isSaving) return;
+    if (!creationName) return setToastMessage("Please enter a name");
     saveActionRef.current = "create";
     setShowSaveModal(false);
     setCaptureTrigger(t => t + 1);
   };
 
   const handleScreenshot = async (dataUrl: string) => {
+    setIsSaving(true);
     try {
       const storageRef = ref(storage, `screenshots/${user!.uid}/${Date.now()}.png`);
       await uploadString(storageRef, dataUrl, 'data_url');
@@ -279,17 +293,19 @@ export default function Scene() {
         // Let's use the existing name if creationName is empty, but we don't have it easily here unless we stored it.
         // Actually, let's just use the creationName state. We'll ensure it's set on load.
         await setDoc(doc(db, "creations", currentCreationId), creationData);
-        alert("Saved (Overwritten)!");
+        setToastMessage("Saved (Overwritten)!");
       } else {
         const docRef = await addDoc(collection(db, "creations"), creationData);
         setCurrentCreationId(docRef.id);
-        alert("Saved (New)!");
+        setToastMessage("Saved (New)!");
       }
 
       // setCreationName(""); // Don't clear immediately, maybe?
     } catch (e) {
       console.error("Error saving document: ", e);
-      alert("Error saving");
+      setToastMessage("Error saving");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -430,7 +446,7 @@ export default function Scene() {
           <div className="flex items-center gap-2">
             <img src={user.photoURL || ""} alt="User" className="w-8 h-8 rounded-full" />
             <button onClick={() => signOut(auth)} className="text-white text-sm bg-red-500/80 px-2 py-1 rounded hover:bg-red-600">Logout</button>
-            <button onClick={triggerSave} className="text-white text-sm bg-green-500/80 px-3 py-1 rounded hover:bg-green-600">Save</button>
+            <button onClick={triggerSave} disabled={isSaving} className="text-white text-sm bg-green-500/80 px-3 py-1 rounded hover:bg-green-600">Save</button>
             <button onClick={loadCreations} className="text-white text-sm bg-yellow-500/80 px-3 py-1 rounded hover:bg-yellow-600">Gallery</button>
           </div>
         ) : (
@@ -457,6 +473,13 @@ export default function Scene() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="absolute bottom-4 right-4 z-50 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg animate-pulse">
+          {toastMessage}
         </div>
       )}
 
